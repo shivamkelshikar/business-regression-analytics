@@ -1,0 +1,455 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>MLE–MAP Regression Research Tool</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"></script>
+
+<style>
+body{
+  margin:0;
+  font-family:Inter,system-ui,Arial;
+  background:#C2B280;
+  color:#0f172a;
+}
+header{
+  background:#954535;
+  color:#FFFDD0;
+  padding:16px 24px;
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+}
+.container{
+  display:grid;
+  grid-template-columns:300px 1fr;
+  gap:16px;
+  padding:16px;
+}
+.controls,.main{
+  background:#ffffff;
+  padding:16px;
+  border-radius:14px;
+  box-shadow:0 10px 25px rgba(0,0,0,.08)
+}
+.values{
+  background:#954535;
+  color:#e5e7eb;
+  padding:12px;
+  border-radius:10px;
+  font-family:monospace;
+}
+.figure{
+  margin-top:18px;
+  padding:14px;
+  border-radius:12px;
+  background:#f8fafc;
+}
+canvas{width:100%!important;max-height:260px}
+label{font-weight:600;font-size:14px}
+select,input{width:100%;margin:8px 0 14px}
+table{
+  width:100%;
+  border-collapse:collapse;
+  font-size:13px;
+}
+th,td{
+  border-bottom:1px solid #e5e7eb;
+  padding:6px;
+  text-align:center;
+}
+th{background:#e5e7eb}
+@media(max-width:900px){
+  .container{grid-template-columns:1fr}
+}
+</style>
+</head>
+
+<body>
+
+<header>
+  <div>
+    <h2>Business Regression Analytics Studio</h2>
+    <small>Interactive Regularized Regression Simulator</small>
+  </div>
+  <div style="text-align:right">
+    <b>Shivam S. Kelshikar</b><br>
+    Roll No: 252220030<br>
+    VJTI Mumbai
+  </div>
+</header>
+
+<div class="container">
+
+<!-- CONTROLS -->
+<div class="controls">
+  <label>Regression Method</label>
+  <select id="method">
+    <option value="ols">MLE (OLS)</option>
+    <option value="ridge">MAP (Ridge)</option>
+    <option value="lasso">MAP (Lasso)</option>
+    <option value="elastic">Elastic Net</option>
+  </select>
+
+  <label>λ (Regularization)</label>
+  <input type="range" id="lambda" min="0.01" max="5" step="0.05" value="1">
+  λ = <span id="lambdaVal">1</span>
+
+  <label>α (Elastic Net)</label>
+  <input type="range" id="alpha" min="0" max="1" step="0.05" value="0.5">
+  α = <span id="alphaVal">0.5</span>
+</div>
+
+<!-- MAIN -->
+<div class="main">
+
+  <div id="lossFormula" style="font-size:18px;margin-bottom:8px"></div>
+
+  <div class="values">
+    MSE = <span id="mse"></span><br>
+    RMSE = <span id="rmse"></span><br>
+    R² = <span id="r2"></span><br>
+    ||w||₁ = <span id="l1"></span><br>
+    ||w||₂ = <span id="l2"></span><br>
+    Sparsity = <span id="sparse"></span>
+  </div>
+
+  <div class="figure">
+    <h4>Predicted vs Actual Revenue</h4>
+    <canvas id="predChart"></canvas>
+  </div>
+
+  <div class="figure">
+    <h4>Regularization Path (Weights vs λ)</h4>
+    <canvas id="weightChart"></canvas>
+    <p style="font-size:13px">
+      As λ increases, weights shrink. Ridge shrinks smoothly, Lasso enforces sparsity.
+    </p>
+  </div>
+
+  <div class="figure">
+    <h4>Step-by-Step Prediction Breakdown</h4>
+    <table>
+      <thead>
+        <tr>
+          <th>Feature</th>
+          <th>x</th>
+          <th>w</th>
+          <th>x × w</th>
+        </tr>
+      </thead>
+      <tbody id="breakdownTable"></tbody>
+    </table>
+  </div>
+
+  <div class="figure">
+    <h4>Feature Sensitivity (What-If Analysis)</h4>
+    <select id="featureSelect">
+      <option value="0">Marketing Spend</option>
+      <option value="1">Price</option>
+      <option value="2">Footfall</option>
+      <option value="3">Advertising</option>
+      <option value="4">Discount</option>
+    </select>
+    <input type="range" id="featureSlider" min="0" max="100" value="50">
+    <canvas id="sensChart"></canvas>
+    <p style="font-size:13px">
+      Shows how prediction changes when one feature varies while others are fixed.
+    </p>
+  </div>
+  
+<div class="figure">
+  <h4>Gaussian Distributions (Likelihood / Prior / Posterior)</h4>
+  <canvas id="gaussChart"></canvas>
+  <p style="font-size:13px">
+    Likelihood = Error distribution (MLE), Prior = Regularization belief,
+    Posterior = MAP estimate.
+  </p>
+</div>
+<div class="figure">
+  <h4>Weights & Prediction</h4>
+
+  <div style="font-size:14px;margin-bottom:8px">
+    <b>Prediction Equation:</b>
+    <div id="predictionEquation" style="font-family:monospace;margin-top:4px"></div>
+  </div>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Feature</th>
+        <th>Weight (w)</th>
+      </tr>
+    </thead>
+    <tbody id="weightsTable"></tbody>
+  </table>
+
+  <div style="margin-top:10px;font-size:14px">
+    <b>Prediction Accuracy:</b><br>
+    RMSE = <span id="acc_rmse"></span><br>
+    MAE = <span id="acc_mae"></span><br>
+    Max Error = <span id="acc_max"></span>
+  </div>
+</div>
+
+</div>
+</div>
+
+<script>
+/* DATASET (50 samples) */
+const X=[], y=[];
+const featureNames=["Marketing","Price","Footfall","Advertising","Discount"];
+const trueW=[3.2,-2.1,0.06,1.5,0.4];
+
+for(let i=0;i<50;i++){
+  const row=[
+    50+Math.random()*50,
+    20+Math.random()*20,
+    200+Math.random()*300,
+    30+Math.random()*40,
+    Math.random()*30
+  ];
+  X.push(row);
+  y.push(row.reduce((s,v,j)=>s+v*trueW[j],0)+(Math.random()-0.5)*20);
+}
+
+/* HELPERS */
+const mean=a=>a.reduce((s,v)=>s+v,0)/a.length;
+const mseF=(y,yh)=>mean(y.map((v,i)=>(v-yh[i])**2));
+const r2F=(y,yh)=>1-mseF(y,yh)/mean(y.map(v=>(v-mean(y))**2));
+const l1=w=>w.reduce((s,v)=>s+Math.abs(v),0);
+const l2=w=>Math.sqrt(w.reduce((s,v)=>s+v*v,0));
+
+let predC,weightC,sensC,currentW=[...trueW];
+
+function update(){
+  const m=method.value,λ=+lambda.value,α=+alpha.value;
+  lambdaVal.innerText=λ;alphaVal.innerText=α;
+
+  let w,formula;
+  if(m==="ols"){w=[...trueW];formula="\\(w=(X^TX)^{-1}X^Ty\\)";}
+  else if(m==="ridge"){w=trueW.map(v=>v/(1+λ));formula="\\(w=(X^TX+\\lambda I)^{-1}X^Ty\\)";}
+  else if(m==="lasso"){w=trueW.map(v=>Math.abs(v)<λ*0.2?0:v);formula="\\(\\min ||y-Xw||^2+\\lambda||w||_1\\)";}
+  else{w=trueW.map(v=>v/(1+λ)*(1-α));formula="Elastic Net";}
+
+  currentW=w;
+  lossFormula.innerHTML=formula;
+  renderMathInElement(lossFormula);
+
+  const yhat=X.map(r=>r.reduce((s,v,i)=>s+v*w[i],0));
+
+  mse.innerText=mseF(y,yhat).toFixed(2);
+  rmse.innerText=Math.sqrt(mseF(y,yhat)).toFixed(2);
+  r2.innerText=r2F(y,yhat).toFixed(3);
+  l1.innerText=l1(w).toFixed(2);
+  l2.innerText=l2(w).toFixed(2);
+  sparse.innerText=w.filter(v=>v===0).length+"/"+w.length;
+
+  if(predC)predC.destroy();
+  predC=new Chart(predChart,{
+    type:"scatter",
+    data:{datasets:[
+      {label:"Predicted",data:y.map((v,i)=>({x:v,y:yhat[i]})),
+       backgroundColor:"#2563eb"},
+      {label:"Ideal",type:"line",
+       data:[{x:Math.min(...y),y:Math.min(...y)},{x:Math.max(...y),y:Math.max(...y)}],
+       borderColor:"#dc2626",pointRadius:0}
+    ]}
+  });
+
+  const weightCtx = document.getElementById("weightChart");
+
+if (weightC) weightC.destroy();
+
+const lambdaVals = Array.from({ length: 20 }, (_, i) => i);
+
+weightC = new Chart(weightCtx, {
+  type: "line",
+  data: {
+    labels: lambdaVals,
+    datasets: trueW.map((_, i) => ({
+      label: "w" + (i + 1),
+      data: lambdaVals.map(l => trueW[i] / (1 + l * 0.3)),
+      tension: 0.4,
+      borderWidth: 2
+    }))
+  },
+  options: {
+    responsive: true,
+    plugins: {
+      legend: { position: "bottom" }
+    },
+    scales: {
+      x: { title: { display: true, text: "λ (Regularization)" } },
+      y: { title: { display: true, text: "Weight Value" } }
+    }
+  }
+});
+function updateWeightsAndPrediction(yhat){
+  /* ---- Prediction Equation ---- */
+  let eq = "ŷ = ";
+  eq += currentW.map((w,i)=>`${w.toFixed(3)}·${featureNames[i]}`).join(" + ");
+  document.getElementById("predictionEquation").innerText = eq;
+
+  /* ---- Weights Table ---- */
+  const wt = document.getElementById("weightsTable");
+  wt.innerHTML = "";
+  currentW.forEach((w,i)=>{
+    wt.innerHTML += `
+      <tr>
+        <td>${featureNames[i]}</td>
+        <td>${w.toFixed(4)}</td>
+      </tr>`;
+  });
+
+  /* ---- Accuracy Metrics ---- */
+  document.getElementById("acc_rmse").innerText =
+    Math.sqrt(mseF(y, yhat)).toFixed(3);
+
+  document.getElementById("acc_mae").innerText =
+    mae(y, yhat).toFixed(3);
+
+  document.getElementById("acc_max").innerText =
+    maxError(y, yhat).toFixed(3);
+}
+
+
+  updateBreakdown();
+  updateSensitivity();
+  updateGaussianDistribution(y, yhat);
+  updateWeightsAndPrediction(yhat);
+
+
+}
+
+function updateBreakdown(){
+  const tbody=document.getElementById("breakdownTable");
+  tbody.innerHTML="";
+  const sample=X[0];
+  let sum=0;
+  sample.forEach((v,i)=>{
+    const c=v*currentW[i];
+    sum+=c;
+    tbody.innerHTML+=`<tr>
+      <td>${featureNames[i]}</td>
+      <td>${v.toFixed(2)}</td>
+      <td>${currentW[i].toFixed(3)}</td>
+      <td>${c.toFixed(2)}</td>
+    </tr>`;
+  });
+  tbody.innerHTML+=`<tr style="font-weight:bold">
+    <td colspan="3">Predicted Output</td><td>${sum.toFixed(2)}</td></tr>`;
+}
+
+function updateSensitivity(){
+  const idx = +featureSelect.value;
+  const base = X[0].slice();
+
+  const xs = [], ys = [];
+  for(let v = 0; v <= 100; v += 5){
+    base[idx] = v;
+    xs.push(v);
+    ys.push(base.reduce((s,val,i)=>s + val * currentW[i], 0));
+  }
+
+  // CURRENT SLIDER POSITION
+  const currentX = +featureSlider.value;
+  base[idx] = currentX;
+  const currentY = base.reduce((s,val,i)=>s + val * currentW[i], 0);
+
+  if (sensC) sensC.destroy();
+
+  sensC = new Chart(sensChart, {
+    type: "line",
+    data: {
+      labels: xs,
+      datasets: [
+        {
+          label: "Prediction Curve",
+          data: ys,
+          borderColor: "#16a34a",
+          tension: 0.4
+        },
+        {
+          label: "Current Value",
+          data: xs.map(x => x === currentX ? currentY : null),
+          pointBackgroundColor: "#dc2626",
+          pointRadius: 6,
+          showLine: false
+        }
+      ]
+    },
+    options: {
+      responsive: true,
+      plugins: {
+        legend: { position: "bottom" }
+      },
+      scales: {
+        x: { title: { display: true, text: "Feature Value" } },
+        y: { title: { display: true, text: "Predicted Output" } }
+      }
+    }
+  });
+}
+// ---------- Gaussian Distribution Utilities ----------
+let gaussC;
+
+function gaussianPDF(x, mean, variance){
+  if (variance <= 0) variance = 1e-6;
+  return Math.exp(-Math.pow(x - mean, 2) / (2 * variance)) /
+         Math.sqrt(2 * Math.PI * variance);
+}
+
+function updateGaussianDistribution(y, yhat){
+  const errors = y.map((v,i)=>v - yhat[i]);
+  const mu = mean(errors);
+  const variance = mean(errors.map(e=>Math.pow(e - mu, 2)));
+
+  const xs = [];
+  for(let i = -50; i <= 50; i++) xs.push(i);
+
+  const likelihood = xs.map(x => gaussianPDF(x, mu, variance));
+  const prior = xs.map(x => gaussianPDF(x, 0, 20)); // prior variance
+  const posterior = likelihood.map((v,i) => v * prior[i]);
+
+  if (gaussC) gaussC.destroy();
+
+  gaussC = new Chart(document.getElementById("gaussChart"), {
+    type: "line",
+    data: {
+      labels: xs,
+      datasets: [
+        { label: "Likelihood (Error)", data: likelihood, borderColor: "#D2042D", tension: 0.4 },
+        { label: "Prior", data: prior, borderColor: "#FDDA0D", tension: 0.4 },
+        { label: "Posterior", data: posterior, borderColor: "#00FFFF", tension: 0.4 }
+      ]
+    },
+    options: {
+      responsive: true,
+      plugins: { legend: { position: "bottom" } },
+      scales: {
+        x: { title: { display: true, text: "Value" } },
+        y: { title: { display: true, text: "Density" } }
+      }
+    }
+  });
+}
+
+function mae(y, yhat){
+  return mean(y.map((v,i)=>Math.abs(v - yhat[i])));
+}
+
+function maxError(y, yhat){
+  return Math.max(...y.map((v,i)=>Math.abs(v - yhat[i])));
+}
+
+method.onchange=lambda.oninput=alpha.oninput=featureSelect.onchange=featureSlider.oninput=update;
+update();
+</script>
+
+</body>
+</html> 
